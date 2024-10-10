@@ -183,6 +183,7 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+  t->parent_tid = thread_current()->tid;
 
   /* Prepare thread for first run by initializing its stack.
      Do this atomically so intermediate values for the 'stack' 
@@ -470,7 +471,16 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
-}
+  // Initialize file list
+  list_init (&t->open_files);
+  t->next_fd = 2;
+
+  // Initialize child infrastructure
+  list_init(&t->children);
+  t->child_load = 0;
+  lock_init(&t->child_lock);
+  cond_init(&t->child_condition);
+  }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
    returns a pointer to the frame's base. */
@@ -585,3 +595,20 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+
+struct thread *
+thread_get_by_id (tid_t tid)
+{
+  ASSERT (tid != TID_ERROR);
+  struct list_elem *e;
+  struct thread *t;
+  e = list_tail (&all_list);
+  while ((e = list_prev (e)) != list_head (&all_list))
+    {
+      t = list_entry (e, struct thread, allelem);
+      if (t->tid == tid && t->status != THREAD_DYING)
+        return t;
+    }
+  return NULL;
+}

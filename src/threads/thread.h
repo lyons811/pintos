@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -14,9 +15,18 @@ enum thread_status
     THREAD_DYING        /* About to be destroyed. */
   };
 
+typedef int tid_t;
+struct child_status {
+  tid_t child_tid;
+  bool exited;
+  bool has_been_waited;
+  int child_exit_status;
+  struct list_elem elem_child_status;
+};
+
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
-typedef int tid_t;
+
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
 
 /* Thread priorities. */
@@ -89,9 +99,17 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
+    struct list open_files;
+    int next_fd;
+    int child_load;
+    struct lock child_lock;
+    struct condition child_condition;
+    struct list children;               /* List of struct child_status elements */
+    tid_t parent_tid;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -101,6 +119,7 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
+
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -137,5 +156,7 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+struct thread * thread_get_by_id (tid_t);
+
 
 #endif /* threads/thread.h */
