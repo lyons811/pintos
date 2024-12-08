@@ -4,7 +4,10 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-
+#include "threads/synch.h"
+#include "filesys/file.h"
+#include "vm/page.h"
+#include "lib/kernel/hash.h"
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -16,6 +19,7 @@ enum thread_status
 
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
+typedef int mapid_t;
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
 
@@ -23,12 +27,15 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-/* Thread Niceness */
-#define NICE_MIN -20                       /* Lowest priority. */
-#define NICE_DEFAULT 0                  /* Default priority. */
-#define NICE_MAX 20                      /* Highest priority. */
-/* Thread Recent CPU */
-#define RECENT_CPU_DEFAULT 0
+
+struct child_status {
+  tid_t child_tid;
+  bool exited;
+  bool has_been_waited;
+  int child_exit_status;
+  struct list_elem elem_child_status;
+};
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -93,21 +100,32 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
-    int recent_cpu;                     /* the recent CPU value of the thread stored as fixed-point */
     struct list_elem allelem;           /* List element for all threads list. */
-    int nice;
-
+    struct list open_files;
+    int next_fd;
+    int child_load;
+    struct lock child_lock;
+    struct condition child_condition;
+    struct list children;               /* List of struct child_status elements */
+    tid_t parent_tid;
+    int exit_status;                    /* Thread exit status */
+    struct thread *parent;              /* The parent thread. */
+    struct list files;                  /* File associated with the thread. */
+    struct file *exec;                  /* File the thread is executing. */
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    struct list locks;
-    struct lock *waiting_for_lock;
+
+    /* Memory Maped Files table */
+    mapid_t mapid_allocator;
+    struct hash mmfiles;
+
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
 #endif
-    int64_t sleep_till; //sleep thread until ticks happen, wake up (used for timer device)
 
+    struct hash suppl_page_table;//supplemental page table
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
@@ -142,20 +160,11 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
-void thread_set_thread_priority (struct thread *thread, int new_priority);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-bool priority_compare(const struct list_elem * e_1, const struct list_elem * e_2,
-  void *aux);
-void calculate_thread_advanced_priority(struct thread *t, void* aux);
-void calculate_thread_recent_cpu(struct thread *t, void* aux);
-void calculate_load_avg(void);
-void sort_ready_list(void);
-
-void thread_sleep (int64_t ticks, int64_t start_ticks);
-void thread_check_wake(int64_t ticks);
+struct thread * thread_get_by_id (tid_t);
 
 #endif /* threads/thread.h */
